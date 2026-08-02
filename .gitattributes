@@ -1,3 +1,4 @@
 data/raw/discourse/meta/research/csl.jsonl filter=lfs diff=lfs merge=lfs -text
 data/raw/discourse/meta/news/ALL.xlsx filter=lfs diff=lfs merge=lfs -text
 data/raw/discourse/meta/socialmeida/*.jsonl filter=lfs diff=lfs merge=lfs -text
+data/raw/discourse/meta/socialmedia/*.jsonl filter=lfs diff=lfs merge=lfs -text
