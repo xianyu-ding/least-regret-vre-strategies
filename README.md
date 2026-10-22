@@ -1,182 +1,94 @@
 # Least-Regret VRE Strategies
 
-This repository contains the code, data and documentation supporting the study:
+Research code and data accompanying the study:
 
 > *Large-scale discourse analysis reveals least-regret integration strategies for variable renewable energy.*
 
-The project combines large-scale discourse analysis with multi-criteria decision-making (MCDM) to examine robust, least-regret strategies for integrating variable renewable energy (VRE).
+This project combines LLM-assisted discourse analysis with multi-criteria decision-making (MCDM) to investigate strategies for integrating variable renewable energy (VRE). It connects priorities expressed in government, news, research and social-media texts with economic, power-system reliability and environmental indicators, and examines how strategy rankings respond to different weighting assumptions.
 
-## Overview
+## Research approach
 
-The workflow integrates:
+The analysis brings together three components:
 
-1. Preparation of energy-system model outputs.
-2. Construction of a combined dataset covering economic, reliability and environmental indicators.
-3. Large-scale discourse analysis of VRE integration strategies.
-4. LLM-assisted classification and coding of discourse evidence.
-5. Stochastic competitive contribution (SCC) and MCDM analysis.
-6. Robustness analysis and generation of manuscript figures and tables.
+1. **Discourse analysis.** Prepare and filter text from four source groups, then use an LLM to score the extent to which each text discusses specified assessment criteria.
+2. **Discourse-derived weighting.** Aggregate criterion scores within and across sources to construct weights for multi-criteria analysis.
+3. **Strategy evaluation and sensitivity analysis.** Combine energy-system indicators with alternative weights to examine strategy rankings, criterion contributions and robustness.
 
-## Repository structure
+The LLM scores represent the attention given to a criterion in a text. They are not direct measurements of a strategy's technical performance. Performance indicators and discourse-derived weights enter the subsequent analysis as distinct inputs.
 
-```text
-least-regret-vre-strategies/
-├── data/
-│   ├── raw/                  # Raw input data where redistribution is permitted
-│   ├── processed/            # Cleaned and analysis-ready datasets
-│   ├── demo/                 # Small example data for testing the workflow
-│   └── README_data.md        # Data documentation and source information
-├── src/
-│   ├── 01_prepare_tiam_outputs.py
-│   ├── 02_build_mcdm_dataset.py
-│   ├── 03_run_scc_analysis.py
-│   └── 04_visualise_normalisation.py
-├── prompts/                  # LLM prompts and coding instructions
-├── docs/                     # Methodological and reproducibility documentation
-├── results/
-│   ├── tables/
-│   ├── figures/
-│   └── supplementary_figures/
-├── notebooks/                # Optional exploratory notebooks
-├── requirements.txt
-├── LICENSE
-└── README.md
-```
+## Materials in this repository
 
-## Data availability
+- **Text preparation and filtering scripts** for government documents, news, research records and Zhihu question-and-answer data.
+- **DeepSeek API scoring scripts**, including embedded prompts and output-parsing routines.
+- **Filtered text and archived criterion scores** for the four source groups.
+- **Weighting and visualisation code**, including source-specific comparisons and sensitivity analysis.
+- **Energy-system data preparation and MCDM scripts**, alongside cost, reliability and environmental input tables.
 
-The repository includes processed datasets, analysis-ready CSV/Excel files, output tables and documentation required to reproduce the main analyses.
-
-Some original source documents or third-party records may not be redistributed because of copyright, database-access or licensing restrictions. For such sources, this repository provides metadata, screening records, processing scripts and documentation to enable reconstruction of the analytical dataset from the sources described in the manuscript.
-
-Detailed information on each dataset is provided in `data/README_data.md`.
-
-## Software requirements
-
-The analysis was implemented in Python.
-
-Key packages include:
-
-* pandas
-* numpy
-* scipy
-* scikit-learn
-* matplotlib
-* seaborn
-* plotly
-* openpyxl
-
-A complete list of dependencies will be provided in `requirements.txt`.
-
-The workflow is designed to run on a standard personal computer. No specialised hardware is required.
-
-## Installation
-
-Clone the repository:
-
-```bash
-git clone https://github.com/xianyu-ding/least-regret-vre-strategies.git
-cd least-regret-vre-strategies
-```
-
-Create and activate a virtual environment:
-
-```bash
-python -m venv vre_env
-source vre_env/bin/activate
-```
-
-For Windows:
-
-```bash
-vre_env\Scripts\activate
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Typical installation time should be less than 10 minutes on a standard personal computer.
-
-## Reproducing the analysis
-
-The main workflow should be run in the following sequence:
-
-```bash
-python src/01_prepare_tiam_outputs.py
-python src/02_build_mcdm_dataset.py
-python src/03_run_scc_analysis.py
-python src/04_visualise_normalisation.py
-```
-
-The scripts perform the following tasks:
-
-1. Prepare TIAM-derived capacity and generation outputs.
-2. Combine cost, reliability, emissions and environmental-impact indicators into the MCDM input dataset.
-3. Run SCC/MCDM analysis, stochastic weight sampling, robustness checks and figure generation.
-4. Produce visualisations illustrating the normalisation process used in the MCDM workflow.
-
-Outputs are written to:
+### Repository layout
 
 ```text
-results/tables/
-results/figures/
-results/supplementary_figures/
+code/
+├── Text Filter/             # Text conversion, cleaning and keyword filtering
+├── Deepseek Rating/         # API requests, embedded prompts and score extraction
+├── Weighting/               # Earlier score-aggregation workflow
+└── Figure/                  # Weight calculations, rankings and figure scripts
+data/
+├── raw/
+│   ├── discourse/
+│   │   ├── meta/            # Source files, including Git LFS-tracked assets
+│   │   └── filtered/        # Filtered text by source group
+│   ├── economics/           # Cost indicators
+│   ├── reliability/         # Reliability indicators
+│   ├── environment/         # Environmental indicators
+│   └── tiam/                # Placeholder for TIAM inputs
+└── deepseek rating score/   # Archived scores in JSONL format
+src/                        # Energy-system preparation and MCDM analysis
+docs/                       # Documentation placeholders
+prompts/                    # Placeholder; current prompts are embedded in code
+requirements.txt            # Dependency manifest placeholder
+LICENSE
 ```
 
-## LLM-assisted discourse analysis
+## Where to start
 
-The discourse-analysis materials will be added to this repository, including:
+- **Corpus preparation:** [text-filtering scripts](code/Text%20Filter) and [filtered discourse data](data/raw/discourse/filtered).
+- **Archived LLM results:** [criterion-score files](data/deepseek%20rating%20score).
+- **Score-to-weight calculation:** [Data_weight.py](code/Figure/Data_weight.py), which groups scores into three tiers, aggregates source-level proportions and calculates hierarchical weights.
+- **Weight sensitivity:** [Fig_weighting_sensitivity.py](code/Figure/Fig_weighting_sensitivity.py).
+- **Energy-system analysis:** [scripts in src](src).
 
-* corpus metadata and screening records;
-* document selection and filtering criteria;
-* prompts and coding instructions;
-* model settings and post-processing procedures;
-* classified discourse outputs and validation materials.
+The repository retains scripts from different stages of the research. In particular, the archived score files contain ten indicators, whereas the currently included API prompts specify eight. These should not be treated as a fully version-matched reproduction chain.
 
-These materials will be organised in:
+## Using the code and data
 
-```text
-data/raw/discourse/
-data/processed/
-prompts/
-docs/llm_workflow.md
-docs/data_collection_and_screening.md
-```
+The code is written in Python. Dependencies vary by script and include pandas, NumPy, SciPy, scikit-learn, Matplotlib, seaborn, Plotly, openpyxl, pdfplumber, requests and tqdm.
 
-## MCDM and SCC framework
+This repository is currently a research working archive, rather than a fully configured end-to-end reproduction package. Before running a script:
 
-The MCDM framework evaluates VRE integration strategies using economic, technical and environmental criteria.
+- Review its required inputs, output locations and dependencies.
+- Adapt the hard-coded local paths to your environment.
+- Check that the necessary source data are available. Some energy-system inputs are not included, and some source assets are tracked through Git LFS.
+- For API-based scoring, use your own credentials securely and review the provider's current access requirements and costs.
 
-The analysis includes stochastic weight sampling to assess how scenario rankings change under uncertainty in decision-maker preferences. The SCC approach evaluates the importance of criteria by measuring how often removing a criterion changes the selected best-performing strategy.
+The dependency manifest and detailed methodology documents are not yet populated. Installing from the current requirements file alone does not configure the workflow. Archived results can be inspected without making new API requests.
 
-Further methodological details will be provided in:
+## Interpretation and reproducibility
 
-```text
-docs/methodology.md
-docs/variable_definitions.md
-```
+The weighting and ranking scripts support exploration of methodological choices and sensitivity. These analyses should be distinguished from validation of the LLM's document-level scores.
 
-## Reproducibility
+The repository does not currently provide a complete record of corpus collection, prompt development, manual annotation or repeated model runs. Users should account for these limits when interpreting results or adapting the approach to another corpus.
 
-To reproduce the main analysis, install the required Python dependencies, place the required input files in the designated data directories, and run the scripts in numerical order.
+## License and data use
 
-The repository will include processed data, scripts, intermediate outputs, final tables and figure-generation workflows wherever redistribution is permitted.
+The source code is released under the [MIT License](LICENSE).
 
-## License
-
-The source code is released under the MIT License.
-
-Data are provided for research and reproducibility purposes. Please consult `data/README_data.md` for any restrictions relating to third-party data or source documents.
+Source documents and third-party datasets may be subject to separate copyright, access or redistribution conditions. Their inclusion in this repository does not establish a blanket licence for reuse; check the relevant source terms before redistributing them.
 
 ## Citation
 
-If you use this repository, please cite:
+The study is identified in this repository as:
 
-> Ding, Q. et al. *Large-scale discourse analysis reveals least-regret integration strategies for variable renewable energy.* [Journal details and DOI to be added after publication].
+> Ding, Q. et al. *Large-scale discourse analysis reveals least-regret integration strategies for variable renewable energy.*
 
-## Contact
+Journal and DOI details are not currently provided in this repository.
 
-For questions concerning the code, data or reproducibility workflow, please contact the corresponding author through the publication record.
