@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 # Deepseek API configuration
 API_URL = "https://api.deepseek.com/chat/completions"
-API_KEY = "sk-33e7e97f51e1496a83bdf6d68efa7ecd"  # Replace with your actual DeepSeek API key
+API_KEY = os.environ.get("DEEPSEEK_API_KEY", "").strip()
 
 def read_jsonl(file_path):
     """Read JSONL file"""
@@ -188,16 +188,14 @@ def get_concurrency_limit():
 def get_api_config():
     """Get API configuration from user"""
     global API_URL, API_KEY
+    API_KEY = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    if not API_KEY:
+        raise RuntimeError("Set the DEEPSEEK_API_KEY environment variable before running API scoring.")
     
     default_url = API_URL
     url = input(f"请输入Deepseek API URL (默认: {default_url}): ").strip()
     if url:
         API_URL = url
-    
-    default_key = API_KEY
-    key = input(f"请输入API Key (默认: {default_key}): ").strip()
-    if key:
-        API_KEY = key
     
     model = input("请输入模型名称 (默认: deepseek-reasoner): ").strip()
     if not model:
