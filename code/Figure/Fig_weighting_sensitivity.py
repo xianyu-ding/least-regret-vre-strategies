@@ -4,6 +4,7 @@ TELA Weights with Lambda Sensitivity Analysis - Complex Nature Style
 Two-panel design: Main weights + Lambda sensitivity analysis
 """
 
+from pipeline_common import (SCORE_DIR, RESULTS_DIR, WEIGHTS_DIR, INDICATOR_PATH, rank_scores, winner_shares, draw_dirichlet)
 import os, json, re
 import numpy as np
 import pandas as pd
@@ -16,8 +17,8 @@ from matplotlib.collections import PatchCollection
 import seaborn as sns
 
 # ========== PATHS ==========
-BASE_DIR = r"D:\llm\results\result_v5"
-OUT_DIR  = os.path.join(BASE_DIR, "eda_out")
+BASE_DIR = str(SCORE_DIR)
+OUT_DIR  = str(RESULTS_DIR)
 FIG_DIR  = os.path.join(OUT_DIR, "figures")
 os.makedirs(FIG_DIR, exist_ok=True)
 
@@ -66,7 +67,7 @@ ENV_SET = [
 # ========== ENHANCED COLORS ==========
 CATEGORY_COLORS = {
     "Cost": "#2E86AB",
-    "LOLD": "#A23B72", 
+    "LOLE": "#A23B72", 
     "Environment": "#F18F01",
     "Global (CO2)": "#C73E1D"
 }
@@ -118,52 +119,20 @@ def set_nature_complex_style():
 
 # ========== DATA PROCESSING ==========
 def parse_score_value(v):
-    if v is None: return 1
-    if isinstance(v, (int, float)):
-        x = int(round(v))
-    elif isinstance(v, str):
-        m = re.search(r'(\d+)', v)
-        x = int(m.group(1)) if m else 1
-    else:
-        x = 1
-    return max(1, min(5, x))
+    from pipeline_common import parse_score_value as parse
+    return parse(v)
 
 def normalize_scores_dict(d):
-    return {k: parse_score_value(d.get(k, 1)) for k in INDICATORS}
+    from pipeline_common import normalize_scores_dict as validate
+    return validate(d)
 
 def flatten_assessment(ass):
-    flat = {}
-    if isinstance(ass, dict):
-        for sec in ["economic","technical","environmental","global_environmental"]:
-            sub = ass.get(sec, {})
-            if isinstance(sub, dict):
-                for k,v in sub.items():
-                    flat[k] = parse_score_value(v)
-    return normalize_scores_dict(flat)
+    from pipeline_common import flatten_assessment as flatten
+    return flatten(ass)
 
 def read_jsonl_scores(path, source_tag):
-    rows = []
-    if not os.path.isfile(path):
-        print(f"[WARN] missing file: {path}")
-        return pd.DataFrame()
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line: continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if "scores" in obj and isinstance(obj["scores"], dict):
-                sc = normalize_scores_dict(obj["scores"])
-            elif "assessment" in obj:
-                sc = flatten_assessment(obj["assessment"])
-            else:
-                continue
-            row = {"source": source_tag}
-            row.update(sc)
-            rows.append(row)
-    return pd.DataFrame(rows)
+    from pipeline_common import read_jsonl_scores as read
+    return read(path, source_tag, include_length=False)
 
 def collapse_to_tiers(df):
     long = df.melt(id_vars=["source"], value_vars=INDICATORS,
@@ -208,7 +177,7 @@ def top_level_weights_with_lambda(Q):
 
     Z = {
         "Cost": z_cost,
-        "LOLD": z_lole,
+        "LOLE": z_lole,
         "Environment": z_env,
         "Global (CO2)": z_co2,
     }
@@ -459,6 +428,7 @@ def create_complex_tela_visualization():
     # Save figure
     save_path = os.path.join(FIG_DIR, "figD_tela_weights_sensitivity.png")
     fig.savefig(save_path, dpi=600, bbox_inches='tight', facecolor='white')
+    fig.savefig(os.path.splitext(save_path)[0] + '.pdf', bbox_inches='tight', facecolor='white')
     plt.close(fig)
     
     print(f"Complex TELA weights with sensitivity analysis saved to: {save_path}")

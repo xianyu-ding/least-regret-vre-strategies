@@ -5,6 +5,7 @@ Panel A: 情景排名变化条形图 (各准则对每个情景的具体影响)
 Panel B: 准则影响力对比条形图 (各准则的总体影响强度)
 """
 
+from pipeline_common import (SCORE_DIR, RESULTS_DIR, WEIGHTS_DIR, INDICATOR_PATH, rank_scores, winner_shares, draw_dirichlet)
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -16,9 +17,9 @@ from matplotlib.patches import Rectangle
 import matplotlib.patches as mpatches
 
 # ========== PATHS ==========
-BASE_DIR = Path(r"C:/Users/vanessa/OneDrive - University College London/research/data/paper3/MCDM_FINAL")
-SCC_DIR = BASE_DIR / "scc_out"
-FIG_DIR = BASE_DIR / "eda_out" / "figures"
+BASE_DIR = RESULTS_DIR
+SCC_DIR = RESULTS_DIR / "scc"
+FIG_DIR = RESULTS_DIR / "figures"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
 # ========== COLORS ==========
@@ -41,7 +42,7 @@ ALTERNATIVE_COLORS = {
 # Core category colors
 CATEGORY_COLORS = {
     "Cost": "#2E86AB",           # Economic
-    "LOLD": "#A23B72",           # Technical (changed from LOLE)
+    "LOLE": "#A23B72",           # Technical (changed from LOLE)
     "LOLE": "#A23B72",           # Technical (backup)
     "Environment": "#F18F01",    # Local Environmental  
     "CO2": "#C73E1D"             # Global Environmental
@@ -128,8 +129,8 @@ def load_arsi_data():
         
         heatmap_data = heatmap_data.rename(index=name_mapping)
         
-        # 将 LOLE 改为 LOLD
-        lole_mapping = {'LOLE': 'LOLD'}
+        # 将 LOLE 改为 LOLE
+        lole_mapping = {'LOLE': 'LOLE'}
         for df in [arsi_all, consensus_data]:
             if 'criterion' in df.columns:
                 df['criterion'] = df['criterion'].replace(lole_mapping)
@@ -177,7 +178,7 @@ def plot_scenario_ranking_changes(ax, consensus_data):
     valid_criteria = criteria_completeness[criteria_completeness > 0.5].index.tolist()
     
     # 选择主要准则（优先选择关键准则）
-    preferred_criteria = ['Cost', 'LOLD', 'Environment', 'CO2', 'Land Occupation', 
+    preferred_criteria = ['Cost', 'LOLE', 'Environment', 'CO2', 'Land Occupation', 
                          'Human Toxicity', 'Freshwater Ecotoxicity']
     main_criteria = [c for c in preferred_criteria if c in valid_criteria]
     
@@ -230,7 +231,7 @@ def plot_scenario_ranking_changes(ax, consensus_data):
     # 设置坐标轴
     ax.set_xticks(x_positions)
     ax.set_xticklabels(valid_scenarios, rotation=0, ha='center', fontweight='bold')
-    ax.set_ylabel('ARSI Value (Ranking Change)\n← Worse Ranking | Better Ranking →', 
+    ax.set_ylabel('ARSI: Rank after removal − rank before removal\nPositive = criterion supports the alternative', 
                  fontweight='bold', fontsize=16)  # Increased from 11
     ax.set_title('Scenario Ranking Changes by Criteria\n(How Each Criterion Affects Each Scenario)', 
                 fontweight='bold', fontsize=18)  # Increased from 14
@@ -247,9 +248,9 @@ def plot_scenario_ranking_changes(ax, consensus_data):
     # 添加影响区域标注
     ylim = ax.get_ylim()
     ax.fill_between([ax.get_xlim()[0], ax.get_xlim()[1]], 0, ylim[1], 
-                   alpha=0.05, color='green', label='Better Ranking')
+                   alpha=0.05, color='green', label='Criterion supports alternative')
     ax.fill_between([ax.get_xlim()[0], ax.get_xlim()[1]], ylim[0], 0, 
-                   alpha=0.05, color='red', label='Worse Ranking')
+                   alpha=0.05, color='red', label='Criterion disadvantages alternative')
     
     return plot_data, valid_scenarios, main_criteria[:6]
 

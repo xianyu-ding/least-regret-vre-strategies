@@ -5,6 +5,7 @@ Panel A: 真实的胜率收敛过程
 Panel B: 真实的权重场景下得分分布
 """
 
+from pipeline_common import (SCORE_DIR, RESULTS_DIR, WEIGHTS_DIR, INDICATOR_PATH, rank_scores, winner_shares, draw_dirichlet)
 import os
 import numpy as np
 import pandas as pd
@@ -13,10 +14,12 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from pathlib import Path
 
+PERSPECTIVE = os.environ.get("LEAST_REGRET_PERSPECTIVE", "comprehensive")
+
 # ========== PATHS ==========
-BASE_DIR = Path(r"C:/Users/vanessa/OneDrive - University College London/research/data/paper3/MCDM_FINAL")
-SCC_DIR = BASE_DIR / "scc_out"
-FIG_DIR = BASE_DIR / "eda_out" / "figures"
+BASE_DIR = RESULTS_DIR
+SCC_DIR = RESULTS_DIR / "scc"
+FIG_DIR = RESULTS_DIR / "figures"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
 # ========== COLORS ==========
@@ -73,16 +76,16 @@ def load_real_scc_data():
     """加载真实的SCC计算数据"""
     try:
         # 加载最终结果
-        winrates = pd.read_csv(SCC_DIR / "scc_winrates.csv")
-        rank_stats = pd.read_csv(SCC_DIR / "scc_rank_stats.csv") 
-        baseline = pd.read_csv(SCC_DIR / "baseline_ranking.csv")
+        winrates = pd.read_csv(SCC_DIR / f"scc_winrates_{PERSPECTIVE}.csv")
+        rank_stats = pd.read_csv(SCC_DIR / f"scc_rank_stats_{PERSPECTIVE}.csv") 
+        baseline = pd.read_csv(SCC_DIR / f"baseline_ranking_{PERSPECTIVE}.csv")
         
         # 加载真实的演化数据
-        evolution_real = pd.read_csv(SCC_DIR / "scc_evolution_real.csv")
+        evolution_real = pd.read_csv(SCC_DIR / f"scc_evolution_{PERSPECTIVE}.csv")
         
         # 加载权重场景数据
         try:
-            scenarios_real = pd.read_csv(SCC_DIR / "scc_weight_scenarios_real.csv")
+            scenarios_real = pd.read_csv(SCC_DIR / f"scc_weight_scenarios_{PERSPECTIVE}.csv")
         except:
             scenarios_real = None
             print("警告: 未找到权重场景数据，将使用备用方案")
@@ -410,6 +413,10 @@ def print_data_summary():
         print(f"无法加载数据摘要: {e}")
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Plot a saved ranking perspective")
+    parser.add_argument("--perspective", default=PERSPECTIVE, choices=["comprehensive", "government", "news", "research", "social_media"])
+    PERSPECTIVE = parser.parse_args().perspective
     print("=== 基于真实SCC数据的可视化 ===")
     print_data_summary()
     create_real_scc_visualization()

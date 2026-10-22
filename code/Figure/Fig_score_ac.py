@@ -4,6 +4,7 @@
 按指标类别分别显示，解决标注混乱问题
 """
 
+from pipeline_common import (SCORE_DIR, RESULTS_DIR, WEIGHTS_DIR, INDICATOR_PATH, rank_scores, winner_shares, draw_dirichlet)
 import os, re, json
 import numpy as np
 import pandas as pd
@@ -23,8 +24,8 @@ except ImportError:
     print("Warning: scipy clustering functions not available. Clustering will be skipped.")
 
 # ====== PATH ======
-BASE_DIR = r"D:\llm\results\result_v5"  # <-- 改成你的目录
-OUT_DIR = os.path.join(BASE_DIR, "eda_out")
+BASE_DIR = str(SCORE_DIR)  # <-- 改成你的目录
+OUT_DIR = str(RESULTS_DIR)
 TBL_DIR = os.path.join(OUT_DIR, "tables")
 FIG_DIR = os.path.join(OUT_DIR, "figures")
 
@@ -38,7 +39,7 @@ INDICATORS = [
 
 INDICATOR_ALIASES = {
     "total_transition_cost": "Transition cost",
-    "lole": "Reliability (LOLD)",
+    "lole": "Reliability (LOLE)",
     "land_occupation": "Land occupation",
     "freshwater_ecotoxicity": "Freshwater ecotox.",
     "human_toxicity": "Human toxicity",
@@ -165,59 +166,24 @@ def ensure_dir(p):
 def save_publication_figure(fig, base, dpi=600):
     """Save figures in publication quality - PNG only"""
     fig.savefig(f"{base}.png", dpi=dpi, bbox_inches='tight', facecolor='white')
+    fig.savefig(f"{base}.pdf", bbox_inches='tight', facecolor='white')
 
 # ====== IO FUNCTIONS ======
 def parse_score_value(v):
-    if v is None:
-        return 1
-    if isinstance(v, (int,float)):
-        x = int(round(v))
-    elif isinstance(v, str):
-        m = re.search(r'(\d+)', v); x = int(m.group(1)) if m else 1
-    else:
-        x = 1
-    return min(5, max(1, x))
+    from pipeline_common import parse_score_value as parse
+    return parse(v)
 
 def normalize_scores_dict(d):
-    return {k: parse_score_value(d.get(k, 1)) for k in INDICATORS}
+    from pipeline_common import normalize_scores_dict as validate
+    return validate(d)
 
 def flatten_assessment(ass):
-    flat = {}
-    if isinstance(ass, dict):
-        for sec in ["economic","technical","environmental","global_environmental"]:
-            s = ass.get(sec, {})
-            if isinstance(s, dict):
-                for k,v in s.items():
-                    flat[k] = parse_score_value(v)
-    return normalize_scores_dict(flat)
+    from pipeline_common import flatten_assessment as flatten
+    return flatten(ass)
 
 def read_jsonl_scores(path, source_tag):
-    rows = []
-    if not os.path.isfile(path):
-        print(f"[WARN] missing: {path}")
-        return pd.DataFrame()
-    
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line: continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            
-            if "scores" in obj and isinstance(obj["scores"], dict):
-                sc = normalize_scores_dict(obj["scores"])
-            elif "assessment" in obj:
-                sc = flatten_assessment(obj["assessment"])
-            else:
-                continue
-            
-            text = obj.get("input_text") or obj.get("question") or obj.get("answer") or ""
-            row = {"source": source_tag, "length": len(str(text))}
-            row.update(sc); rows.append(row)
-    
-    return pd.DataFrame(rows)
+    from pipeline_common import read_jsonl_scores as read
+    return read(path, source_tag, include_length=True)
 
 # ====== CORE FUNCTIONS ======
 def collapse_to_tiers(df):
@@ -365,7 +331,7 @@ def create_faceted_uncertainty_analysis(per_src, tri_long):
                 if len(source_data) > 1:
                     x_vals = source_data['n_total'].values
                     y_vals = source_data['std_tier'].values
-                    if len(x_vals) >= 2 and np.std(x_vals) > 1e-10:
+                    if len(x_vals) >= 2 and np.std(x_vals) > 1e-10 and np.std(y_vals) > 1e-10:
                         try:
                             z = np.polyfit(x_vals, y_vals, 1)
                             p = np.poly1d(z)
@@ -426,16 +392,15 @@ def create_faceted_uncertainty_analysis(per_src, tri_long):
                                                   markerfacecolor='#1f77b4', markersize=15,
                                                   markeredgecolor='black', markeredgewidth=2))
                     legend_labels.append(name)
-            shape_legend = ax.legend(legend_elements, legend_labels, 
+            shape_legend = fig.legend(legend_elements, legend_labels, 
                                      title="Local Environmental Indicators",
-                                     loc='center', bbox_to_anchor=(0.53, 0.5),
+                                     loc='lower center', bbox_to_anchor=(0.5, 0.065), ncol=4,
                                      fontsize=16, title_fontsize=19,
                                      framealpha=0.95, edgecolor='black',
                                      fancybox=False)
             shape_legend.get_title().set_fontweight('bold')
             for text in shape_legend.get_texts():
                 text.set_fontweight('bold')
-            ax.add_artist(shape_legend)
         
         # 加粗边与刻度
         for spine in ax.spines.values():
@@ -460,10 +425,10 @@ def create_faceted_uncertainty_analysis(per_src, tri_long):
                           alpha=0.8, edgecolor='black', linewidth=1),
                 fontweight='bold')
     
-    plt.tight_layout(rect=[0, 0.06, 1, 1])  # 给底部注释留点空间
+    plt.tight_layout(rect=[0, 0.19, 1, 1])  # 给底部注释留点空间
     
     fig.text(0.5, 0.03, 
-             'Color = Information Source. Economic/Technical/Global Environmental use circles. Local Environmental uses different shapes (see in-panel legend).',
+             'Color = Information Source. Economic/Technical/Global Environmental use circles. Local Environmental uses different shapes (see legend below).',
              ha='center', va='bottom', fontsize=20, fontweight='bold')
     fig.text(0.5, 0.01, 
              'Higher std dev = Greater disagreement. X-axis uses log scale with ticks at 300, 1000, 3000, 5000.',
@@ -507,26 +472,19 @@ def export_standard_tables(per_src, tri_long):
     corr_data = []
     for source in standard_table["source"].unique():
         df_s = standard_table[standard_table["source"] == source]
-        if len(df_s) > 3:
-            corr = np.corrcoef(df_s["n_total"], df_s["std_tier"])[0, 1]
-            if not np.isnan(corr):
-                corr_data.append({
-                    "source": source,
-                    "source_label": SOURCE_ALIASES[source],
-                    "correlation_n_vs_uncertainty": corr,
-                    "n_indicators": len(df_s)
-                })
-    
-    corr_df = pd.DataFrame(corr_data)
-    if not corr_df.empty:
-        corr_df.to_csv(
-            os.path.join(TBL_DIR, "correlation_analysis.csv"), 
-            index=False
-        )
-    
+        valid = (len(df_s) > 3 and df_s["n_total"].std() > 0
+                 and df_s["std_tier"].std() > 0)
+        corr = float(np.corrcoef(df_s["n_total"], df_s["std_tier"])[0, 1]) if valid else np.nan
+        corr_data.append({
+            "source": source, "source_label": SOURCE_ALIASES[source],
+            "correlation_n_vs_uncertainty": corr, "n_indicators": len(df_s),
+            "status": "computed" if valid else "undefined: insufficient variation or observations"
+        })
+    pd.DataFrame(corr_data).to_csv(os.path.join(TBL_DIR, "correlation_analysis.csv"), index=False)
+
     print("Standard statistical tables exported:")
     print(f" - {TBL_DIR}/standard_statistical_analysis.csv")
-    print(f" - {TBL_DIR}/category041_summary_standard.csv")
+    print(f" - {TBL_DIR}/category_summary_standard.csv")
     print(f" - {TBL_DIR}/correlation_analysis.csv")
 
 # ====== MAIN EXECUTION ======

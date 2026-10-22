@@ -4,6 +4,7 @@ Monte Carlo权重抽样分布可视化 - 基于实际SCCA分析数据
 单一面板：真实Monte Carlo权重抽样分布散点图
 """
 
+from pipeline_common import (SCORE_DIR, RESULTS_DIR, WEIGHTS_DIR, INDICATOR_PATH, rank_scores, winner_shares, draw_dirichlet)
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -12,9 +13,9 @@ from pathlib import Path
 import matplotlib.patches as mpatches
 
 # ========== PATHS ==========
-BASE_DIR = Path(r"C:/Users/vanessa/OneDrive - University College London/research/data/paper3/MCDM_FINAL")
-SCC_DIR = BASE_DIR / "scc_out"
-FIG_DIR = BASE_DIR / "eda_out" / "figures"
+BASE_DIR = RESULTS_DIR
+SCC_DIR = RESULTS_DIR / "scc"
+FIG_DIR = RESULTS_DIR / "figures"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
 # ========== COLOR SCHEME ==========

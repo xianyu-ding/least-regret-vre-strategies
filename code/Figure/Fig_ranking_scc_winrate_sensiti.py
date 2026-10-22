@@ -6,6 +6,7 @@ Panel B: Violin plot showing total-score distribution across real weight scenari
 Matches visualization style and data loading approach from real SCC visualization
 """
 
+from pipeline_common import (SCORE_DIR, RESULTS_DIR, WEIGHTS_DIR, INDICATOR_PATH, rank_scores, winner_shares, draw_dirichlet)
 import os
 import numpy as np
 import pandas as pd
@@ -13,10 +14,12 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from pathlib import Path
 
+PERSPECTIVE = os.environ.get("LEAST_REGRET_PERSPECTIVE", "comprehensive")
+
 # ========== PATHS ==========
-BASE_DIR = Path(r"C:/Users/vanessa/OneDrive - University College London/research/data/paper3/MCDM_FINAL")
-SCC_DIR = BASE_DIR / "scc_out"
-FIG_DIR = BASE_DIR / "eda_out" / "figures"
+BASE_DIR = RESULTS_DIR
+SCC_DIR = RESULTS_DIR / "scc"
+FIG_DIR = RESULTS_DIR / "figures"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
 # ========== DEFINITIONS ==========
@@ -28,7 +31,7 @@ ENV_SET = [
 
 CATEGORY_COLORS = {
     "Cost": "#2E86AB",
-    "LOLD": "#A23B72",
+    "LOLE": "#A23B72",
     "Environment": "#F18F01",
     "CO2": "#C73E1D",
 }
@@ -88,16 +91,16 @@ def load_real_scc_data():
     """Load real SCC calculation data - matching code1"""
     try:
         # Load final results
-        winrates = pd.read_csv(SCC_DIR / "scc_winrates.csv")
-        rank_stats = pd.read_csv(SCC_DIR / "scc_rank_stats.csv") 
-        baseline = pd.read_csv(SCC_DIR / "baseline_ranking.csv")
+        winrates = pd.read_csv(SCC_DIR / f"scc_winrates_{PERSPECTIVE}.csv")
+        rank_stats = pd.read_csv(SCC_DIR / f"scc_rank_stats_{PERSPECTIVE}.csv") 
+        baseline = pd.read_csv(SCC_DIR / f"baseline_ranking_{PERSPECTIVE}.csv")
         
         # Load normalized scores
         normalized = pd.read_csv(SCC_DIR / "normalized_scores.csv")
         
         # Load real weight scenarios data
         try:
-            scenarios_real = pd.read_csv(SCC_DIR / "scc_weight_scenarios_real.csv")
+            scenarios_real = pd.read_csv(SCC_DIR / f"scc_weight_scenarios_{PERSPECTIVE}.csv")
         except:
             scenarios_real = None
             print("Warning: Real weight scenarios data not found, will use fallback")
@@ -117,7 +120,7 @@ def load_real_scc_data():
 # ========== EQUAL WEIGHTS CALCULATION ==========
 def equal_weights():
     """Define equal weights for all categories"""
-    w_top = pd.Series({"Cost": 0.25, "LOLD": 0.25, "Environment": 0.25, "CO2": 0.25})
+    w_top = pd.Series({"Cost": 0.25, "LOLE": 0.25, "Environment": 0.25, "CO2": 0.25})
     w_env = pd.Series(1/7, index=ENV_SET)
     return w_top, w_env
 
@@ -131,7 +134,7 @@ def compute_equal_scores(normalized):
 
     # Total score (lower is better)
     U = (w_top["Cost"] * u_df["total_transition_cost"] +
-         w_top["LOLD"] * u_df["lole"] +
+         w_top["LOLE"] * u_df["lole"] +
          w_top["Environment"] * E +
          w_top["CO2"] * u_df["co2_emission"])
 
@@ -139,12 +142,12 @@ def compute_equal_scores(normalized):
         "alternative": u_df["alternative"],
         "total_score": U,
         "cost_score": u_df["total_transition_cost"] * w_top["Cost"],
-        "lole_score": u_df["lole"] * w_top["LOLD"],
+        "lole_score": u_df["lole"] * w_top["LOLE"],
         "env_score": E * w_top["Environment"],
         "co2_score": u_df["co2_emission"] * w_top["CO2"],
     }).sort_values("total_score").reset_index(drop=True)
     
-    out["rank"] = np.arange(1, len(out) + 1)
+    out["rank"] = rank_scores(out["total_score"])
 
     # Save results
     out_dir = BASE_DIR / "sensitivity_equal_weights_fixed"
@@ -170,7 +173,7 @@ def create_equal_weights_visualization(equal_df, scenarios_real, baseline, k=5):
     # ========== Panel A: Stacked Score Composition ==========
     print("Drawing Panel A: Stacked score composition under equal weights...")
     
-    categories = ["Cost", "LOLD", "Environment", "CO2"]
+    categories = ["Cost", "LOLE", "Environment", "CO2"]
     x = np.arange(len(topk))
     width = 0.65
     
@@ -397,7 +400,7 @@ def print_data_summary(equal_df, scenarios_real):
     top5 = equal_df.head(5)
     for i, row in top5.iterrows():
         print(f"  {row['rank']}. {row['alternative']}: {row['total_score']:.4f}")
-        print(f"     Cost: {row['cost_score']:.4f}, LOLD: {row['lole_score']:.4f}, " +
+        print(f"     Cost: {row['cost_score']:.4f}, LOLE: {row['lole_score']:.4f}, " +
               f"Env: {row['env_score']:.4f}, CO2: {row['co2_score']:.4f}")
 
 # ========== MAIN ==========
@@ -420,4 +423,8 @@ def main():
     create_equal_weights_visualization(equal_df, scenarios_real, baseline, k=5)
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Plot a saved ranking perspective")
+    parser.add_argument("--perspective", default=PERSPECTIVE, choices=["comprehensive", "government", "news", "research", "social_media"])
+    PERSPECTIVE = parser.parse_args().perspective
     main()

@@ -5,6 +5,7 @@ Shows how different sources (Government, News, Research, Social media)
 weight different criteria differently
 """
 
+from pipeline_common import (SCORE_DIR, RESULTS_DIR, WEIGHTS_DIR, INDICATOR_PATH, rank_scores, winner_shares, draw_dirichlet)
 import os, json, re
 import numpy as np
 import pandas as pd
@@ -16,8 +17,8 @@ import matplotlib.patches as mpatches
 import seaborn as sns
 
 # ========== PATHS ==========
-BASE_DIR = r"D:\llm\results\result_v5"
-OUT_DIR  = os.path.join(BASE_DIR, "eda_out")
+BASE_DIR = str(SCORE_DIR)
+OUT_DIR  = str(RESULTS_DIR)
 FIG_DIR  = os.path.join(OUT_DIR, "figures")
 os.makedirs(FIG_DIR, exist_ok=True)
 
@@ -43,7 +44,7 @@ INDICATORS = [
 
 INDICATOR_ALIASES = {
     "total_transition_cost": "Transition Cost",
-    "lole": "Reliability (LOLD)",  # 修改：从 "Reliability (LOLD)" 改为 "LOLD"
+    "lole": "Reliability (LOLE)",  # 修改：从 "Reliability (LOLE)" 改为 "LOLE"
     "land_occupation": "Land Use",
     "freshwater_ecotoxicity": "Freshwater Toxicity",
     "human_toxicity": "Human Toxicity",
@@ -77,7 +78,7 @@ SOURCE_COLORS = {
 
 CATEGORY_COLORS = {
     "Cost": "#2E86AB",           # Economic
-    "LOLD": "#A23B72",           # 修改：从 "LOLE" 改为 "LOLD"
+    "LOLE": "#A23B72",           # 修改：从 "LOLE" 改为 "LOLE"
     "Environment": "#F18F01",    # Local Environmental  
     "Global (CO2)": "#C73E1D"    # Global Environmental
 }
@@ -96,7 +97,7 @@ ENV_COLORS = {
 # All indicators colors (for Panel B) - 按照新的分类体系
 INDICATOR_COLORS = {
     "total_transition_cost": "#2E86AB",  # Economic (Cost)
-    "lole": "#A23B72",                   # Technical (LOLD)
+    "lole": "#A23B72",                   # Technical (LOLE)
     "co2_emission": "#C73E1D",           # Global Environmental
     # Local Environmental indicators (所有环境指标)
     "land_occupation": "#F18F01",
@@ -144,52 +145,20 @@ def set_nature_source_style():
 
 # ========== DATA PROCESSING ==========
 def parse_score_value(v):
-    if v is None: return 1
-    if isinstance(v, (int, float)):
-        x = int(round(v))
-    elif isinstance(v, str):
-        m = re.search(r'(\d+)', v)
-        x = int(m.group(1)) if m else 1
-    else:
-        x = 1
-    return max(1, min(5, x))
+    from pipeline_common import parse_score_value as parse
+    return parse(v)
 
 def normalize_scores_dict(d):
-    return {k: parse_score_value(d.get(k, 1)) for k in INDICATORS}
+    from pipeline_common import normalize_scores_dict as validate
+    return validate(d)
 
 def flatten_assessment(ass):
-    flat = {}
-    if isinstance(ass, dict):
-        for sec in ["economic","technical","environmental","global_environmental"]:
-            sub = ass.get(sec, {})
-            if isinstance(sub, dict):
-                for k,v in sub.items():
-                    flat[k] = parse_score_value(v)
-    return normalize_scores_dict(flat)
+    from pipeline_common import flatten_assessment as flatten
+    return flatten(ass)
 
 def read_jsonl_scores(path, source_tag):
-    rows = []
-    if not os.path.isfile(path):
-        print(f"[WARN] missing file: {path}")
-        return pd.DataFrame()
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line: continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if "scores" in obj and isinstance(obj["scores"], dict):
-                sc = normalize_scores_dict(obj["scores"])
-            elif "assessment" in obj:
-                sc = flatten_assessment(obj["assessment"])
-            else:
-                continue
-            row = {"source": source_tag}
-            row.update(sc)
-            rows.append(row)
-    return pd.DataFrame(rows)
+    from pipeline_common import read_jsonl_scores as read
+    return read(path, source_tag, include_length=False)
 
 def collapse_to_tiers(df):
     long = df.melt(id_vars=["source"], value_vars=INDICATORS,
@@ -213,51 +182,22 @@ def per_source_tier_props(tri_long):
     return props
 
 def calculate_source_specific_weights(per_src):
-    """Calculate weights for each source separately"""
-    source_weights = {}
-    
-    for source in per_src['source'].unique():
-        source_data = per_src[per_src['source'] == source]
-        
-        # Calculate z_k for this source
-        source_data = source_data.copy()
-        source_data['z_k'] = source_data['q3'] + LAMBDA * source_data['q2']
-        
-        # Calculate weights
-        zpow = np.power(source_data['z_k'].values, BETA)
-        denom = zpow.sum()
-        if denom <= EPS:
-            source_data['w_k'] = 1.0 / len(source_data)
-        else:
-            source_data['w_k'] = zpow / denom
-        
-        source_weights[source] = source_data.set_index('indicator')['w_k'].to_dict()
-    
-    return source_weights
+    from Data_weight import (calculate_top_level_weights, calculate_env_sub_weights,
+                             calculate_overall_weights, INDICATOR_ALIASES)
+    reverse = {alias: canonical for canonical, alias in INDICATOR_ALIASES.items()}
+    output = {}
+    for source, frame in per_src.groupby('source'):
+        Q = frame.copy()
+        Q['z_k'] = Q['q3'] + LAMBDA * Q['q2']
+        overall = calculate_overall_weights(calculate_top_level_weights(Q), calculate_env_sub_weights(Q))
+        output[source] = {reverse[key]: value for key, value in overall.items()}
+    return output
 
 def calculate_top_level_by_source(source_weights):
-    """Calculate top-level weights for each source"""
-    top_level_by_source = {}
-    
-    for source, weights in source_weights.items():
-        # Get individual indicator weights
-        w_cost = weights.get("total_transition_cost", 0)
-        w_lole = weights.get("lole", 0) 
-        w_co2 = weights.get("co2_emission", 0)
-        
-        # Environment = average of environmental indicators
-        env_weights = [weights.get(ind, 0) for ind in ENV_SET]
-        w_env = np.mean(env_weights) if env_weights else 0
-        
-        # Store top-level weights
-        top_level_by_source[source] = {
-            "Cost": w_cost,
-            "LOLD": w_lole,  # 修改：从 "LOLD" 改为 "LOLD"
-            "Environment": w_env,
-            "Global (CO2)": w_co2
-        }
-    
-    return top_level_by_source
+    return {source: {'Cost': weights['total_transition_cost'], 'LOLE': weights['lole'],
+                     'Environment': sum(weights[key] for key in ENV_SET),
+                     'Global (CO2)': weights['co2_emission']}
+            for source, weights in source_weights.items()}
 
 def calculate_environmental_by_source(source_weights):
     """Calculate environmental sub-weights for each source (normalized within environment)"""
@@ -398,7 +338,7 @@ def create_source_weight_variation():
     ax_heat.set_xlim(-0.5, len(sources)-0.5)
     ax_heat.set_ylim(-0.5, len(indicators_ordered)-0.5)
     ax_heat.set_xticks(range(len(sources)))
-    ax_heat.set_xticklabels(sources, fontweight='bold', fontsize=13, rotation=0)
+    ax_heat.set_xticklabels(sources, fontweight='bold', fontsize=13, rotation=25, ha='right')
     ax_heat.set_yticks(range(len(indicators_ordered)))
     ax_heat.set_yticklabels(indicators_ordered, fontweight='bold', fontsize=11)
     ax_heat.set_title('B. Individual Indicator Weights by Source', fontweight='bold', fontsize=18)
@@ -455,7 +395,7 @@ def create_source_weight_variation():
     ax_env.set_ylabel('Relative Weight within Environment', fontweight='bold', fontsize=16)
     ax_env.set_title('C. Environmental Sub-Criteria Weights by Source', fontweight='bold', fontsize=18)
     ax_env.set_xticks(x + width * 1.5)
-    ax_env.set_xticklabels(env_labels, fontweight='bold', fontsize=15)
+    ax_env.set_xticklabels(env_labels, fontweight='bold', fontsize=13, rotation=25, ha='right')
     
     # Enhanced legend - moved further left
     ax_env.legend(fontsize=13, frameon=True, edgecolor='black', 
@@ -475,15 +415,18 @@ def create_source_weight_variation():
     for label in ax_env.get_xticklabels():
         label.set_color("#F18F01")
         label.set_fontweight('bold')
-        label.set_fontsize(15)
+        label.set_fontsize(13)
     
     # Overall title
     plt.suptitle('Multi-Source Criteria Weighting: Comparative Analysis Across Information Sources', 
                  fontsize=25, fontweight='bold', y=0.99)
     
+    fig.subplots_adjust(bottom=0.20, hspace=0.55)
+
     # Save figure
     save_path = os.path.join(FIG_DIR, "figE_source_weight_variation.png")
     fig.savefig(save_path, dpi=600, bbox_inches='tight', facecolor='white')
+    fig.savefig(os.path.splitext(save_path)[0] + '.pdf', bbox_inches='tight', facecolor='white')
     plt.close(fig)
     
     print(f"Source weight variation analysis saved to: {save_path}")
@@ -495,7 +438,7 @@ def create_source_weight_variation():
     print("  • Consistent color scheme: Economic(Blue), Technical(Purple), Local Environmental(Orange), Global Environmental(Red)")
     print("  • Criteria-specific coloring in all panels")
     print("  • Environmental indicators unified as Local Environmental category")
-    print("  • UPDATED: 'lole' displayed as 'LOLD' throughout, 'Reliability(LOLD)' updated")
+    print("  • UPDATED: 'lole' displayed as 'LOLE' throughout, 'Reliability(LOLE)' updated")
 
 if __name__ == "__main__":
     create_source_weight_variation()

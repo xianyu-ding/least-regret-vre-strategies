@@ -92,3 +92,7 @@ The study is identified in this repository as:
 
 Journal and DOI details are not currently provided in this repository.
 
+
+## Reproducing figures offline
+
+For tested commands, available figures, and remaining data requirements, see [Offline figure reproduction](docs/FIGURE_REPRODUCTION.md). This route uses the archived scores without model calls or upstream simulations.

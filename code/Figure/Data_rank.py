@@ -6,14 +6,15 @@ Enhanced Multi-Perspective SCCA Framework with ARSI
 阶段一：问题定义与模型构建 → 阶段二：基于SMAA的情景排序分析 → 
 阶段三：SCCA结构性关键性诊断 → 阶段四：洞见综合与政策建议
 """
+from pipeline_common import (SCORE_DIR, RESULTS_DIR, WEIGHTS_DIR, INDICATOR_PATH, rank_scores, winner_shares, draw_dirichlet)
 from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 
 # ========= PATHS =========
-BASE_DIR = Path(r"C:/Users/vanessa/OneDrive - University College London/research/data/paper3/MCDM_FINAL")
-WEIGHTS_DIR = BASE_DIR / "weights_out"
+BASE_DIR = RESULTS_DIR
+WEIGHTS_DIR = RESULTS_DIR / "weights"
 INDICATOR_FILE = "combined_data.csv"
 
 # ========= MC SETTINGS =========
@@ -88,7 +89,7 @@ OVR_ENV_MAP = {
 
 # ========= IO & VALIDATION =========
 def load_indicators() -> pd.DataFrame:
-    fp = BASE_DIR / INDICATOR_FILE
+    fp = INDICATOR_PATH
     if not fp.is_file():
         raise FileNotFoundError(f"Indicator file not found: {fp}")
     df = pd.read_csv(fp, thousands=',')
@@ -107,57 +108,34 @@ def load_indicators() -> pd.DataFrame:
     # numeric & non-negative
     for k in INDICATORS:
         df[k] = pd.to_numeric(df[k], errors="coerce")
-        if df[k].isna().any():
+        if not np.isfinite(df[k]).all():
             raise RuntimeError(f"Column '{k}' contains non-numeric/NaN.")
         mn = float(df[k].min())
         if mn < 0:
-            df[k] = df[k] - mn
+            raise ValueError(f"Negative values in {k}; choose and document a normalization policy explicitly.")
     return df
 
 def load_perspective_weights(perspective: str) -> tuple[pd.Series, pd.Series]:
-    """Load weights for a specific perspective"""
-    weight_file = PERSPECTIVES[perspective]
-    fp = WEIGHTS_DIR / weight_file
-    
-    if not fp.is_file():
-        raise FileNotFoundError(f"Weight file not found for {perspective}: {fp}")
-    
+    fp = WEIGHTS_DIR / PERSPECTIVES[perspective]
     df = pd.read_csv(fp)
-    
-    # Check required columns
-    for c in [OVR_COL_CAT, OVR_COL_W]:
-        if c not in df.columns:
-            raise RuntimeError(f"{weight_file} must have columns: {OVR_COL_CAT}, {OVR_COL_W}")
-    
-    df = df.copy()
-    df["w"] = pd.to_numeric(df[OVR_COL_W], errors="coerce")
-    if df["w"].isna().any():
-        raise RuntimeError(f"{weight_file} contains non-numeric weights.")
-    
-    # Map to canonical names
-    df["top_canon"] = df[OVR_COL_CAT].map(OVR_TOP_MAP)
-    df["env_canon"] = df[OVR_COL_CAT].map(OVR_ENV_MAP)
-    
-    # Derive top weights
-    w_top = pd.Series(0.0, index=TOP_GROUPS)
-    top_part = df.dropna(subset=["top_canon"]).groupby("top_canon")["w"].sum()
-    w_top.update(top_part)
-    
-    # Environment as sum of env items
-    env_sum = df.dropna(subset=["env_canon"])["w"].sum()
-    w_top["Environment"] = w_top.get("Environment", 0.0) + env_sum
-    
-    if (w_top<=0).all():
-        raise RuntimeError(f"Derived top weights from {weight_file} are all zero.")
-    w_top = w_top / w_top.sum()
-    
-    # Derive env sub-weights
-    env_part = df.dropna(subset=["env_canon"]).groupby("env_canon")["w"].sum().reindex(ENV_SET).fillna(0.0)
-    if env_part.sum() <= 0:
-        raise RuntimeError(f"No environment items found in {weight_file} to derive sub-weights.")
-    w_env = env_part / env_part.sum()
-    
-    return w_top, w_env
+    required = {OVR_COL_CAT, OVR_COL_W}
+    if not required.issubset(df.columns):
+        raise ValueError(f'{fp}: required columns {required}')
+    expected = set(OVR_TOP_MAP) | set(OVR_ENV_MAP)
+    if df[OVR_COL_CAT].duplicated().any() or set(df[OVR_COL_CAT]) != expected:
+        raise ValueError(f'{fp}: require each of the ten canonical indicator aliases exactly once')
+    values = pd.to_numeric(df[OVR_COL_W], errors='coerce')
+    if not np.isfinite(values).all() or (values < 0).any() or not np.isclose(values.sum(), 1):
+        raise ValueError(f'{fp}: weights must be finite, nonnegative and sum to one')
+    weights = pd.Series(values.to_numpy(), index=df[OVR_COL_CAT])
+    top = pd.Series(0.0, index=TOP_GROUPS)
+    for alias, key in OVR_TOP_MAP.items():
+        top[key] = weights[alias]
+    env = pd.Series({key: weights[alias] for alias, key in OVR_ENV_MAP.items()}).reindex(ENV_SET)
+    top['Environment'] = env.sum()
+    # An inactive environmental group contributes zero regardless of its internal allocation.
+    env = env / env.sum() if env.sum() > 0 else pd.Series(1 / len(ENV_SET), index=ENV_SET)
+    return top, env
 
 # ========= CORE FUNCTIONS =========
 def l2_normalize_columns(df: pd.DataFrame):
@@ -186,18 +164,17 @@ def baseline_ranking(u_df: pd.DataFrame, W_top, w_env, perspective: str, outdir:
         "U_total": U,
         "E_environment": E
     })
-    out["rank"] = out["U_total"].rank(method="min", ascending=True).astype(int)
+    out["rank"] = rank_scores(out["U_total"])
     out = out.sort_values(["rank", "U_total"], ascending=[True, True])
     out.to_csv(outdir / f"baseline_ranking_{perspective}.csv", index=False)
     return out
 
 def calculate_spearman_correlation(ranks1: np.ndarray, ranks2: np.ndarray) -> float:
-    """Calculate Spearman rank correlation coefficient"""
-    try:
-        corr, _ = spearmanr(ranks1, ranks2)
-        return corr if not np.isnan(corr) else 0.0
-    except:
-        return 0.0
+    if np.array_equal(ranks1, ranks2):
+        return 1.0
+    corr, _ = spearmanr(ranks1, ranks2)
+    # Complete ties in one ranking have no ordering information.
+    return float(corr) if np.isfinite(corr) else 0.0
 
 def scc_with_scca_arsi_analysis(u_df: pd.DataFrame, W_top_centre: pd.Series, w_env_centre: pd.Series, 
                                perspective: str, outdir: Path):
@@ -205,6 +182,8 @@ def scc_with_scca_arsi_analysis(u_df: pd.DataFrame, W_top_centre: pd.Series, w_e
     Enhanced SCC with Stochastic Criteria Criticality Analysis (SCCA) and 
     Alternative Rank Shift Index (ARSI) Analysis
     """
+    if N_MC <= 0 or SAVE_EVERY <= 0:
+        raise ValueError("n_mc and save_every must be positive")
     rng = np.random.default_rng(SEED)
     alts = u_df["alternative"].values
     M = len(alts)
@@ -214,9 +193,9 @@ def scc_with_scca_arsi_analysis(u_df: pd.DataFrame, W_top_centre: pd.Series, w_e
     X_env  = u_df[ENV_SET].values
 
     # Initialize tracking arrays
-    wins = np.zeros(M, dtype=np.int64)
+    wins = np.zeros(M, dtype=np.float64)
     ranks_sum = np.zeros(M, dtype=np.float64)
-    cumulative_wins = np.zeros(M, dtype=np.int64)
+    cumulative_wins = np.zeros(M, dtype=np.float64)
     
     # SCCA: Track structural criticality
     criteria_names = ["Cost", "LOLE", "Environment", "CO2"] + ENV_SET
@@ -240,18 +219,18 @@ def scc_with_scca_arsi_analysis(u_df: pd.DataFrame, W_top_centre: pd.Series, w_e
     
     for iter_num in range(N_MC):
         # Generate random weights
-        W_top = rng.dirichlet(KAPPA_TOP * W_top_centre.values)
-        w_env = rng.dirichlet(KAPPA_ENV * w_env_centre.values)
+        W_top = draw_dirichlet(rng, W_top_centre.values, KAPPA_TOP)
+        w_env = draw_dirichlet(rng, w_env_centre.values, KAPPA_ENV)
         
         # Calculate baseline scores and rankings
         E = X_env.dot(w_env)
         U = W_top[0]*X_cost + W_top[1]*X_lole + W_top[2]*E + W_top[3]*X_co2
-        baseline_ranks = np.argsort(np.argsort(U)) + 1  # Convert to ranks 1,2,3...
+        baseline_ranks = rank_scores(U)  # Convert to ranks 1,2,3...
         
         # Find winner
-        j = int(np.argmin(U))
-        wins[j] += 1
-        cumulative_wins[j] += 1
+        shares = winner_shares(U)
+        wins += shares
+        cumulative_wins += shares
         ranks_sum += baseline_ranks
 
         # === SCCA + ARSI: Criterion Removal Analysis ===
@@ -271,7 +250,7 @@ def scc_with_scca_arsi_analysis(u_df: pd.DataFrame, W_top_centre: pd.Series, w_e
             if W_temp.sum() > 0:
                 W_temp = W_temp / W_temp.sum()
                 U_perturbed = W_temp[0]*X_cost + W_temp[1]*X_lole + W_temp[2]*E + W_temp[3]*X_co2
-                perturbed_ranks = np.argsort(np.argsort(U_perturbed)) + 1
+                perturbed_ranks = rank_scores(U_perturbed)
                 
                 # Calculate Spearman correlation and disturbance (SCCA)
                 rho = calculate_spearman_correlation(baseline_ranks, perturbed_ranks)
@@ -279,7 +258,7 @@ def scc_with_scca_arsi_analysis(u_df: pd.DataFrame, W_top_centre: pd.Series, w_e
                 
                 # Calculate rank shifts for each alternative (ARSI)
                 for alt_idx in range(M):
-                    rank_shift = baseline_ranks[alt_idx] - perturbed_ranks[alt_idx]
+                    rank_shift = perturbed_ranks[alt_idx] - baseline_ranks[alt_idx]
                     rank_shifts[iter_num, alt_idx, crit_idx] = rank_shift
             else:
                 structural_disturbances[iter_num, crit_idx] = 0
@@ -296,7 +275,7 @@ def scc_with_scca_arsi_analysis(u_df: pd.DataFrame, W_top_centre: pd.Series, w_e
                 w_temp = w_temp / w_temp.sum()
                 E_perturbed = X_env.dot(w_temp)
                 U_perturbed = W_top[0]*X_cost + W_top[1]*X_lole + W_top[2]*E_perturbed + W_top[3]*X_co2
-                perturbed_ranks = np.argsort(np.argsort(U_perturbed)) + 1
+                perturbed_ranks = rank_scores(U_perturbed)
                 
                 # Calculate Spearman correlation and disturbance (SCCA)
                 rho = calculate_spearman_correlation(baseline_ranks, perturbed_ranks)
@@ -304,7 +283,7 @@ def scc_with_scca_arsi_analysis(u_df: pd.DataFrame, W_top_centre: pd.Series, w_e
                 
                 # Calculate rank shifts for each alternative (ARSI)
                 for alt_idx in range(M):
-                    rank_shift = baseline_ranks[alt_idx] - perturbed_ranks[alt_idx]
+                    rank_shift = perturbed_ranks[alt_idx] - baseline_ranks[alt_idx]
                     rank_shifts[iter_num, alt_idx, 4 + env_idx] = rank_shift
             else:
                 structural_disturbances[iter_num, 4 + env_idx] = 0
@@ -327,7 +306,7 @@ def scc_with_scca_arsi_analysis(u_df: pd.DataFrame, W_top_centre: pd.Series, w_e
                     'cumulative_win_rate': current_winrates[alt_idx],
                     'confidence_lower': conf_lower,
                     'confidence_upper': conf_upper,
-                    'current_winner': (alt_idx == j)
+                    'current_winner': bool(shares[alt_idx] > 0)
                 })
 
         # Save weight scenarios
@@ -358,7 +337,7 @@ def scc_with_scca_arsi_analysis(u_df: pd.DataFrame, W_top_centre: pd.Series, w_e
     sci_values = np.mean(structural_disturbances, axis=0)
     
     # === Calculate Alternative Rank Shift Index (ARSI) ===
-    # ARSI_ij = average rank shift of alternative i when criterion j is removed
+    # ARSI = rank after removal minus rank before removal. Positive: criterion supports the alternative.
     arsi_values = np.mean(rank_shifts, axis=0)  # Shape: [M alternatives, n_criteria criteria]
     
     # Save traditional SCC results
@@ -441,7 +420,7 @@ def scc_with_scca_arsi_analysis(u_df: pd.DataFrame, W_top_centre: pd.Series, w_e
     # Save detailed rank shift data for further analysis
     # Reshape rank_shifts for saving
     rank_shift_detailed = []
-    for iter_num in range(N_MC):
+    for iter_num in range(0, N_MC, 100):
         for alt_idx, alt_name in enumerate(alts):
             for crit_idx, crit_name in enumerate(criteria_names):
                 rank_shift_detailed.append({
@@ -453,7 +432,7 @@ def scc_with_scca_arsi_analysis(u_df: pd.DataFrame, W_top_centre: pd.Series, w_e
                 })
     
     # Sample detailed data (save only every 100th iteration to reduce file size)
-    rank_shift_sample = [row for row in rank_shift_detailed if row['iteration'] % 100 == 0]
+    rank_shift_sample = rank_shift_detailed
     pd.DataFrame(rank_shift_sample).to_csv(outdir / f"arsi_rank_shifts_sample_{perspective}.csv", index=False)
     
     # Save evolution and scenario data
@@ -487,13 +466,16 @@ def multi_perspective_analysis(u_df: pd.DataFrame, outdir: Path):
     all_scca_results = []
     all_arsi_results = []
     perspective_summary = {}
+    combined_evolution = combined_scenarios = combined_scca = combined_arsi = None
+    # Preflight every requested perspective so missing input cannot yield a partial success.
+    validated_weights = {name: load_perspective_weights(name) for name in PERSPECTIVES}
     
     for perspective, weight_file in PERSPECTIVES.items():
         print(f"\n--- 分析视角: {perspective} ---")
         
         try:
             # Load perspective-specific weights
-            w_top, w_env = load_perspective_weights(perspective)
+            w_top, w_env = validated_weights[perspective]
             
             # Store weights summary
             perspective_summary[perspective] = {
@@ -516,9 +498,11 @@ def multi_perspective_analysis(u_df: pd.DataFrame, outdir: Path):
             all_arsi_results.append(arsi)
             
         except Exception as e:
-            print(f"ERROR in {perspective}: {e}")
-            continue
+            raise RuntimeError(f"Analysis failed for {perspective}: {e}") from e
     
+    if not all_evolution_data:
+        raise ValueError("No perspectives selected or successfully analyzed")
+
     # Combine all results
     if all_evolution_data:
         combined_evolution = pd.concat(all_evolution_data, ignore_index=True)
@@ -723,7 +707,7 @@ def create_arsi_visualizations_data(outdir: Path):
 
 # ========= MAIN =========
 def main():
-    outdir = BASE_DIR / "scc_out"
+    outdir = RESULTS_DIR / "scc"
     outdir.mkdir(parents=True, exist_ok=True)
 
     print("=== 多视角SCCA+ARSI决策框架 ===")
@@ -784,4 +768,17 @@ def main():
         print(f"强共识关系: {stable_count}/{total_count} ({100*stable_count/total_count:.1f}%)")
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='Offline ten-criterion ranking; requires complete indicator data')
+    parser.add_argument('--indicators', type=Path, default=INDICATOR_PATH)
+    parser.add_argument('--weights-dir', type=Path, default=WEIGHTS_DIR)
+    parser.add_argument('--results-dir', type=Path, default=RESULTS_DIR)
+    parser.add_argument('--n-mc', type=int, default=N_MC)
+    parser.add_argument('--seed', type=int, default=SEED)
+    parser.add_argument('--perspective', choices=list(PERSPECTIVES), action='append')
+    args = parser.parse_args()
+    INDICATOR_PATH, WEIGHTS_DIR, RESULTS_DIR = args.indicators, args.weights_dir, args.results_dir
+    N_MC, SEED = args.n_mc, args.seed
+    if args.perspective:
+        PERSPECTIVES = {key: PERSPECTIVES[key] for key in args.perspective}
     main()

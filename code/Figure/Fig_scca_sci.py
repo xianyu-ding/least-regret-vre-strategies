@@ -5,6 +5,7 @@ Panel A: 准则关键性多视角散点图 (以comprehensive为参考)
 Panel B: 视角一致性与分歧度综合分析
 """
 
+from pipeline_common import (SCORE_DIR, RESULTS_DIR, WEIGHTS_DIR, INDICATOR_PATH, rank_scores, winner_shares, draw_dirichlet)
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -16,9 +17,9 @@ from matplotlib.patches import Ellipse
 from matplotlib.lines import Line2D
 
 # ========== PATHS ==========
-BASE_DIR = Path(r"C:/Users/vanessa/OneDrive - University College London/research/data/paper3/MCDM_FINAL")
-SCC_DIR = BASE_DIR / "scc_out"
-FIG_DIR = BASE_DIR / "eda_out" / "figures"
+BASE_DIR = RESULTS_DIR
+SCC_DIR = RESULTS_DIR / "scc"
+FIG_DIR = RESULTS_DIR / "figures"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
 # ========== COLORS - Nature期刊配色方案 ==========
@@ -310,7 +311,7 @@ def plot_consensus_divergence_analysis(ax, scca_matrix):
        avg_correlation = consistency_score
        
        # 分类
-       if criterion in ['Cost', 'LOLD', 'CO2', 'Environment']:
+       if criterion in ['Cost', 'LOLE', 'CO2', 'Environment']:
            category = 'Primary'
            size = 100
        else:
@@ -377,7 +378,7 @@ def plot_consensus_divergence_analysis(ax, scca_matrix):
            base_offset_x = 20  # 基础右偏移
            
            # 根据准则类型调整水平距离
-           if criterion in ['Cost', 'LOLD', 'CO2', 'Environment']:
+           if criterion in ['Cost', 'LOLE', 'CO2', 'Environment']:
                offset_x = base_offset_x  # 主要准则离得近一些
            else:
                offset_x = base_offset_x + 30  # 环境准则离得远一些，避免与主要准则重叠
@@ -403,7 +404,7 @@ def plot_consensus_divergence_analysis(ax, scca_matrix):
        
        # 标签简化
        label_map = {
-           'LOLE': 'LOLD',
+           'LOLE': 'LOLE',
            'CO2': 'CO2',
            'Cost': 'Cost',
            'Environment': 'Environment',
@@ -487,7 +488,7 @@ def plot_consensus_divergence_analysis(ax, scca_matrix):
    # Primary Criteria - 分成两行
    primary_handles = []
    primary_labels = []
-   for criterion in ['Cost', 'LOLD', 'Environment', 'CO2']:
+   for criterion in ['Cost', 'LOLE', 'Environment', 'CO2']:
        if criterion in df['criterion'].values:
            color = CRITERIA_COLORS[criterion]
            label = criterion if criterion != 'CO2' else 'CO2'
@@ -508,7 +509,7 @@ def plot_consensus_divergence_analysis(ax, scca_matrix):
    primary_legend.get_title().set_fontsize(9)
    
    # Environmental Criteria - 显示所有环境准则
-   env_criteria = [c for c in df['criterion'].values if c not in ['Cost', 'LOLD', 'Environment', 'CO2']]
+   env_criteria = [c for c in df['criterion'].values if c not in ['Cost', 'LOLE', 'Environment', 'CO2']]
    if env_criteria:
        env_handles = []
        env_labels = []

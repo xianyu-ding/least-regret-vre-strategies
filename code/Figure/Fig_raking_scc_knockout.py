@@ -7,6 +7,7 @@ Panel C: 敲除影响网络图
 Panel D: 稳健性分析散点图
 """
 
+from pipeline_common import (SCORE_DIR, RESULTS_DIR, WEIGHTS_DIR, INDICATOR_PATH, rank_scores, winner_shares, draw_dirichlet)
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -18,9 +19,9 @@ from matplotlib.patches import Circle, FancyBboxPatch
 import matplotlib.patches as mpatches
 
 # ========== PATHS ==========
-BASE_DIR = Path(r"C:/Users/vanessa/OneDrive - University College London/research/data/paper3/MCDM_FINAL")
-SCC_DIR = BASE_DIR / "scc_out"
-FIG_DIR = BASE_DIR / "eda_out" / "figures"
+BASE_DIR = RESULTS_DIR
+SCC_DIR = RESULTS_DIR / "scc"
+FIG_DIR = RESULTS_DIR / "figures"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
 # ========== COLORS ==========
@@ -84,28 +85,10 @@ def set_nature_style():
 
 # ========== DATA LOADING ==========
 def load_knockout_data():
-    """加载敲除分析数据"""
-    try:
-        # 加载翻转概率数据
-        top_flip = pd.read_csv(SCC_DIR / "scc_knockout_top_flip.csv")
-        env_flip = pd.read_csv(SCC_DIR / "scc_knockout_env_flip.csv")
-        
-        # 加载胜率变化数据
-        top_winrate_delta = pd.read_csv(SCC_DIR / "scc_knockout_top_winrate_delta.csv")
-        env_winrate_delta = pd.read_csv(SCC_DIR / "scc_knockout_env_winrate_delta.csv")
-        
-        # 加载胜率数据用于稳健性分析
-        winrates = pd.read_csv(SCC_DIR / "scc_winrates.csv")
-        
-        # 替换标签
-        for df in [top_winrate_delta, env_winrate_delta, winrates]:
-            if 'alternative' in df.columns:
-                df['alternative'] = df['alternative'].str.replace('ndc-ltp', 'Netzero', case=False)
-        
-        return top_flip, env_flip, top_winrate_delta, env_winrate_delta, winrates
-        
-    except Exception as e:
-        raise FileNotFoundError(f"无法加载敲除分析数据: {SCC_DIR}: {e}")
+    raise NotImplementedError(
+        'Legacy knockout flip/winrate-delta tables are not produced by Data_rank.py. '
+        'Use Fig_scca_sci.py and Fig_ari.py for current removal diagnostics. '
+        'Do not rename SCI/ARSI tables into knockout flip tables.')
 
 # ========== PANEL A: 指标重要性排名 ==========
 def plot_indicator_importance(ax, top_flip, env_flip):
@@ -157,7 +140,7 @@ def plot_indicator_importance(ax, top_flip, env_flip):
     label_colors = []
     for ind, cat in zip(indicators, categories):
         if ind == 'LOLE':
-            display_name = 'LOLD'
+            display_name = 'LOLE'
         elif ind == 'CO2':
             display_name = 'CO2 Emission'  
         else:

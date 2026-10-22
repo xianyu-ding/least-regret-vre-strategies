@@ -16,6 +16,7 @@ Additionally, it now calculates source-specific weights for each perspective:
 The results are saved as multiple CSV files to a specified output directory.
 """
 
+from pipeline_common import (SCORE_DIR, RESULTS_DIR, WEIGHTS_DIR, INDICATOR_PATH, rank_scores, winner_shares, draw_dirichlet)
 import os
 import json
 import re
@@ -26,7 +27,7 @@ import pandas as pd
 
 # --- INPUT PATHS (数据源路径) ---
 # 注意：这里假设您的原始数据仍然在 result_v5 目录中
-BASE_DIR_INPUT = r"D:\llm\results\result_v5"
+BASE_DIR_INPUT = str(SCORE_DIR)
 FILES = {
     "govern":   os.path.join(BASE_DIR_INPUT, "govern_scores_only.jsonl"),
     "news":     os.path.join(BASE_DIR_INPUT, "news_scores_only.jsonl"),
@@ -35,7 +36,7 @@ FILES = {
 }
 
 # --- OUTPUT PATH (您指定的输出路径) ---
-OUTPUT_DIR = r"D:\llm\results\result_v5\weights_out"
+OUTPUT_DIR = str(WEIGHTS_DIR)
 
 # --- HYPERPARAMETERS (计算超参数) ---
 LAMBDA_DEFAULT = 0.5
@@ -74,52 +75,20 @@ ENV_SET = [
 # 这些函数与之前的脚本相同，用于读取和预处理数据
 
 def parse_score_value(v):
-    if v is None: return 1
-    if isinstance(v, (int, float)):
-        x = int(round(v))
-    elif isinstance(v, str):
-        m = re.search(r'(\d+)', v)
-        x = int(m.group(1)) if m else 1
-    else:
-        x = 1
-    return max(1, min(5, x))
+    from pipeline_common import parse_score_value as parse
+    return parse(v)
 
 def normalize_scores_dict(d):
-    return {k: parse_score_value(d.get(k, 1)) for k in INDICATORS}
+    from pipeline_common import normalize_scores_dict as validate
+    return validate(d)
 
 def flatten_assessment(ass):
-    flat = {}
-    if isinstance(ass, dict):
-        for sec in ["economic", "technical", "environmental", "global_environmental"]:
-            sub = ass.get(sec, {})
-            if isinstance(sub, dict):
-                for k, v in sub.items():
-                    flat[k] = parse_score_value(v)
-    return normalize_scores_dict(flat)
+    from pipeline_common import flatten_assessment as flatten
+    return flatten(ass)
 
 def read_jsonl_scores(path, source_tag):
-    rows = []
-    if not os.path.isfile(path):
-        print(f"[WARN] Missing file, skipping: {path}")
-        return pd.DataFrame()
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line: continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if "scores" in obj and isinstance(obj["scores"], dict):
-                sc = normalize_scores_dict(obj["scores"])
-            elif "assessment" in obj:
-                sc = flatten_assessment(obj["assessment"])
-            else:
-                continue
-            row = {"source": source_tag}
-            row.update(sc)
-            rows.append(row)
-    return pd.DataFrame(rows)
+    from pipeline_common import read_jsonl_scores as read
+    return read(path, source_tag, include_length=False)
 
 def collapse_to_tiers(df):
     long = df.melt(id_vars=["source"], value_vars=INDICATORS,
@@ -338,4 +307,12 @@ def main():
 
 
 if __name__ == "__main__":
+    import argparse
+    from pathlib import Path
+    parser = argparse.ArgumentParser(description='Offline hierarchical weights from validated archived scores')
+    parser.add_argument('--score-dir', type=Path, default=SCORE_DIR)
+    parser.add_argument('--output-dir', type=Path, default=WEIGHTS_DIR)
+    args = parser.parse_args()
+    FILES = {source: args.score_dir / f'{source}_scores_only.jsonl' for source in FILES}
+    OUTPUT_DIR = str(args.output_dir)
     main()
