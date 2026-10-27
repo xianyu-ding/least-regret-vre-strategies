@@ -23,6 +23,7 @@ The LLM scores represent the attention given to a criterion in a text. They are 
 - **Filtered text and archived criterion scores** for the four source groups.
 - **Weighting and visualisation code**, including source-specific comparisons and sensitivity analysis.
 - **Energy-system data preparation and MCDM scripts**, alongside cost, reliability and environmental input tables.
+- **An offline figure runner, its dependency list and tests**, with a guide distinguishing available figures from those that still need additional data.
 
 ### Repository layout
 
@@ -39,19 +40,23 @@ data/
 │   │   └── filtered/        # Filtered text by source group
 │   ├── economics/           # Cost indicators
 │   ├── reliability/         # Reliability indicators
-│   ├── environment/         # Environmental indicators
-│   └── tiam/                # Placeholder for TIAM inputs
+│   └── environment/         # Environmental indicators
 └── deepseek rating score/   # Archived scores in JSONL format
 src/                        # Energy-system preparation and MCDM analysis
-docs/                       # Documentation placeholders
-prompts/                    # Placeholder; current prompts are embedded in code
-requirements.txt            # Dependency manifest placeholder
+scripts/                    # Offline figure runner: reproduce_figures.py
+tests/                      # Weighting, energy-data and figure-runner tests
+docs/                       # Offline figure guide; other documents are placeholders
+requirements-figures.txt    # Dependencies for the offline figure workflow
+requirements.txt            # Empty general dependency-manifest placeholder
 LICENSE
 ```
+
+Current scoring prompts are embedded in the DeepSeek API scripts; there is no separate prompt directory. Raw TIAM inputs are not included in this repository.
 
 ## Where to start
 
 - **Corpus preparation:** [text-filtering scripts](code/Text%20Filter) and [filtered discourse data](data/raw/discourse/filtered).
+- **LLM scoring:** [DeepSeek API scripts with embedded prompts](code/Deepseek%20Rating).
 - **Archived LLM results:** [criterion-score files](data/deepseek%20rating%20score).
 - **Score-to-weight calculation:** [Data_weight.py](code/Figure/Data_weight.py), which groups scores into three tiers, aggregates source-level proportions and calculates hierarchical weights.
 - **Weight sensitivity:** [Fig_weighting_sensitivity.py](code/Figure/Fig_weighting_sensitivity.py).
@@ -66,11 +71,11 @@ The code is written in Python. Dependencies vary by script and include pandas, N
 This repository is currently a research working archive, rather than a fully configured end-to-end reproduction package. Before running a script:
 
 - Review its required inputs, output locations and dependencies.
-- Adapt the hard-coded local paths to your environment.
+- Check each script's path settings. Legacy scripts may require local-path changes; the offline figure runner uses repository-relative paths.
 - Check that the necessary source data are available. Some energy-system inputs are not included, and some source assets are tracked through Git LFS.
 - For API-based scoring, use your own credentials securely and review the provider's current access requirements and costs.
 
-The dependency manifest and detailed methodology documents are not yet populated. Installing from the current requirements file alone does not configure the workflow. Archived results can be inspected without making new API requests.
+The general `requirements.txt` file is empty, and several methodology and workflow documents remain placeholders. For the offline figure workflow, use the populated [requirements-figures.txt](requirements-figures.txt) and [figure-reproduction guide](docs/FIGURE_REPRODUCTION.md). This dependency list does not configure every legacy script or the full upstream workflow. Archived results can be inspected without making new API requests.
 
 ## Interpretation and reproducibility
 
@@ -95,4 +100,6 @@ Journal and DOI details are not currently provided in this repository.
 
 ## Reproducing figures offline
 
-For tested commands, available figures, and remaining data requirements, see [Offline figure reproduction](docs/FIGURE_REPRODUCTION.md). This route uses the archived scores without model calls or upstream simulations.
+For commands, available figures, and remaining data requirements, see [Offline figure reproduction](docs/FIGURE_REPRODUCTION.md). This route uses the archived scores without model calls or upstream simulations.
+
+The source-score and weighting figures have an archived-data workflow. Ranking-dependent figures still require genuine CO2 data to complete the indicator table, and the legacy knockout figure additionally needs compatible knockout tables. The runner reports blocked figures explicitly; a partial run is not a complete reproduction of all figures or a claim of pixel-identical manuscript figures.
